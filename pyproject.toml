@@ -47,6 +47,9 @@ report = [
   "jinja2>=3.1",
 ]
 
+[project.scripts]
+judgekit = "judgekit.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/abdulmunimjemal/judgekit"
 Issues = "https://github.com/abdulmunimjemal/judgekit/issues"
