@@ -1,5 +1,6 @@
 """judgekit — calibrate, monitor, and refuse to ship miscalibrated LLM judges."""
 
+from judgekit.agreement import cohens_kappa, fleiss_kappa, krippendorff_alpha
 from judgekit.calibration import (
     BetaCalibrator,
     Calibrator,
@@ -33,7 +34,10 @@ __all__ = [
     "PlattCalibrator",
     "TemperatureCalibrator",
     "bootstrap_ci",
+    "cohens_kappa",
+    "fleiss_kappa",
     "kl_divergence",
+    "krippendorff_alpha",
     "ks_test",
     "psi",
     "select_calibrator",

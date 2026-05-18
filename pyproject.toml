@@ -34,6 +34,10 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.5",
   "mypy>=1.10",
+  # Test-only: reference statistical implementations validated against
+  # in tests/test_agreement.py. NOT runtime deps of judgekit itself.
+  "statsmodels>=0.14",
+  "krippendorff>=0.6",
 ]
 
 [project.urls]
@@ -53,7 +57,9 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
-ignore = ["E501"]
+# RUF002 flags Greek letters and unicode math symbols as ambiguous; we use
+# them intentionally in math-heavy docstrings (κ, α, σ, μ, ∞, …).
+ignore = ["E501", "RUF002"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -64,5 +70,5 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 # sklearn and scipy don't ship py.typed markers as of their current releases;
 # missing-imports is expected.
-module = ["sklearn.*", "scipy.*"]
+module = ["sklearn.*", "scipy.*", "statsmodels.*", "krippendorff.*"]
 ignore_missing_imports = true
