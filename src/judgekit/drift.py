@@ -36,7 +36,7 @@ def _histogram(scores: np.ndarray, bins: int = 10) -> np.ndarray:
     total = counts.sum()
     if total == 0:
         return np.full(bins, 1.0 / bins)
-    return counts / total
+    return np.asarray(counts / total, dtype=float)
 
 
 def kl_divergence(p_scores: np.ndarray, q_scores: np.ndarray, bins: int = 10) -> float:

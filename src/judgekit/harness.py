@@ -82,9 +82,7 @@ class JudgeHarness:
         if not 0.0 < confidence < 1.0:
             raise ValueError("confidence must be in (0, 1)")
         if len(calibration_set) < 10:
-            raise ValueError(
-                f"calibration_set needs >=10 examples, got {len(calibration_set)}"
-            )
+            raise ValueError(f"calibration_set needs >=10 examples, got {len(calibration_set)}")
         self.judge = judge
         self.calibration_set = calibration_set
         self.calibrator: Calibrator = calibrator if calibrator is not None else IsotonicCalibrator()
