@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Design questions and "how do I use this"
+    url: https://github.com/abdulmunimj/judgekit/discussions
+    about: For open-ended questions, use Discussions — keeps Issues focused on bugs and tracked features.

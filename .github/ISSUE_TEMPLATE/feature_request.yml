@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a new statistical primitive, integration, or API surface.
+title: "feat: "
+labels: [enhancement, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        judgekit deliberately stays small. Before opening, please read CONTRIBUTING.md to understand what we will and won't accept. **Eval-framework features, dashboards, async refactors, and platform-level concerns are usually declined** — pair judgekit with Phoenix/Langfuse/Promptfoo for those.
+
+        Statistical primitives, drift measures, calibration methods, integrations, and bias-audit metrics are usually welcome.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem you're solving
+      description: What does the current judgekit not let you do? Why does it matter for LLM judge reliability specifically?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or primitive
+      description: Sketch the function signature / class. Cite a paper or reference implementation if relevant (e.g. "this is `MAPIE.conformal_intervals`").
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Why not just compose existing judgekit primitives? Why not use Library X?
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope estimate
+      options:
+        - "Small (single function / primitive)"
+        - "Medium (new module)"
+        - "Large (touches public API / multiple modules)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: ready
+    attributes:
+      label: Contribution
+      options:
+        - label: I'd like to submit a PR for this
+        - label: I'm just suggesting; happy if someone else picks it up

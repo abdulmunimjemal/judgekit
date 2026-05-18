@@ -84,7 +84,9 @@ def test_bootstrap_ci_covers_truth_for_simple_mean() -> None:
 
 def test_bootstrap_ci_with_custom_statistic() -> None:
     scores = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-    point, lo, hi = bootstrap_ci(scores, statistic=np.median, n_resamples=300, rng=np.random.default_rng(1))
+    point, lo, hi = bootstrap_ci(
+        scores, statistic=np.median, n_resamples=300, rng=np.random.default_rng(1)
+    )
     assert lo <= point <= hi
     assert abs(point - 0.5) < 0.2
 

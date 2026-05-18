@@ -81,7 +81,8 @@ class PlattCalibrator(Calibrator):
             raise RuntimeError("PlattCalibrator must be fit before predict()")
         raw_scores = np.asarray(raw_scores, dtype=float).reshape(-1, 1)
         # Probability of the positive class
-        return self._model.predict_proba(raw_scores)[:, 1]
+        proba: np.ndarray = self._model.predict_proba(raw_scores)
+        return np.asarray(proba[:, 1], dtype=float)
 
 
 class IsotonicCalibrator(Calibrator):
@@ -105,7 +106,7 @@ class IsotonicCalibrator(Calibrator):
         if not self.fitted:
             raise RuntimeError("IsotonicCalibrator must be fit before predict()")
         raw_scores = np.asarray(raw_scores, dtype=float)
-        return self._model.predict(raw_scores)
+        return np.asarray(self._model.predict(raw_scores), dtype=float)
 
 
 def bootstrap_ci(
