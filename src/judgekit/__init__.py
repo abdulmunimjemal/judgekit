@@ -10,7 +10,7 @@ from judgekit.calibration import (
     bootstrap_ci,
     select_calibrator,
 )
-from judgekit.drift import DriftMonitor, kl_divergence, psi
+from judgekit.drift import DriftMonitor, DriftStatus, kl_divergence, ks_test, psi, wasserstein
 from judgekit.harness import CalibrationStaleError, EvalResult, JudgeHarness
 from judgekit.judge import CalibrationSet, Judge, JudgeOutput, LabeledExample
 
@@ -22,6 +22,7 @@ __all__ = [
     "CalibrationStaleError",
     "Calibrator",
     "DriftMonitor",
+    "DriftStatus",
     "EvalResult",
     "HistogramBinCalibrator",
     "IsotonicCalibrator",
@@ -33,6 +34,8 @@ __all__ = [
     "TemperatureCalibrator",
     "bootstrap_ci",
     "kl_divergence",
+    "ks_test",
     "psi",
     "select_calibrator",
+    "wasserstein",
 ]
