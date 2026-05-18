@@ -1,6 +1,7 @@
 """judgekit — calibrate, monitor, and refuse to ship miscalibrated LLM judges."""
 
 from judgekit.agreement import cohens_kappa, fleiss_kappa, krippendorff_alpha
+from judgekit.bias import BiasReport, format_sensitivity, position_bias, verbosity_bias
 from judgekit.calibration import (
     BetaCalibrator,
     Calibrator,
@@ -27,6 +28,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "BetaCalibrator",
+    "BiasReport",
     "CalibrationSet",
     "CalibrationStaleError",
     "Calibrator",
@@ -51,12 +53,15 @@ __all__ = [
     "bootstrap_ci",
     "cohens_kappa",
     "fleiss_kappa",
+    "format_sensitivity",
     "kl_divergence",
     "krippendorff_alpha",
     "ks_test",
     "load_harness",
     "load_metadata",
+    "position_bias",
     "psi",
     "select_calibrator",
+    "verbosity_bias",
     "wasserstein",
 ]
