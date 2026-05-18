@@ -181,3 +181,21 @@ class JudgeHarness:
         from judgekit.persistence import load_harness
 
         return load_harness(path, judge)
+
+    def report(
+        self,
+        path: str | Path,
+        *,
+        result: EvalResult | None = None,
+        title: str = "judgekit eval report",
+    ) -> Path:
+        """Render a self-contained HTML eval report.
+
+        Requires the ``[report]`` extra (``plotly``, ``jinja2``). Pass an
+        ``EvalResult`` from a recent ``.evaluate()`` call to populate the
+        current-run stats; otherwise the report shows the calibration
+        baseline only.
+        """
+        from judgekit.report import render_harness_report
+
+        return render_harness_report(self, path, result=result, title=title)

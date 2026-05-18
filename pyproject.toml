@@ -38,6 +38,13 @@ dev = [
   # in tests/test_agreement.py. NOT runtime deps of judgekit itself.
   "statsmodels>=0.14",
   "krippendorff>=0.6",
+  # Test the [report] extra in CI.
+  "plotly>=5.20",
+  "jinja2>=3.1",
+]
+report = [
+  "plotly>=5.20",
+  "jinja2>=3.1",
 ]
 
 [project.urls]
@@ -70,5 +77,5 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 # sklearn and scipy don't ship py.typed markers as of their current releases;
 # missing-imports is expected.
-module = ["sklearn.*", "scipy.*", "statsmodels.*", "krippendorff.*"]
+module = ["sklearn.*", "scipy.*", "statsmodels.*", "krippendorff.*", "plotly.*", "jinja2.*"]
 ignore_missing_imports = true
