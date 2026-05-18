@@ -22,12 +22,17 @@ Typical lifecycle:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from judgekit.calibration import Calibrator, IsotonicCalibrator, bootstrap_ci
 from judgekit.drift import DriftMonitor, DriftStatus
 from judgekit.judge import CalibrationSet, Judge
+
+if TYPE_CHECKING:
+    pass
 
 
 class CalibrationStaleError(RuntimeError):
@@ -153,3 +158,26 @@ class JudgeHarness:
             confidence=self.confidence,
             drift=drift,
         )
+
+    def save(self, path: str | Path) -> None:
+        """Persist this fitted harness to a directory.
+
+        Writes ``state.json``, ``calibrator.pkl``, and ``drift_reference.npy``
+        atomically. See :func:`judgekit.persistence.save_harness` for format.
+        """
+        from judgekit.persistence import save_harness
+
+        save_harness(self, path)
+
+    @classmethod
+    def load(cls, path: str | Path, judge: Judge) -> JudgeHarness:
+        """Restore a fitted harness from disk, reattaching ``judge``.
+
+        The original judge identity is NOT persisted by ``save()``. The
+        caller is responsible for passing in a judge that behaves like the
+        one used at fit time; if it doesn't, the first ``evaluate()`` call
+        will raise ``CalibrationStaleError`` (which is the right answer).
+        """
+        from judgekit.persistence import load_harness
+
+        return load_harness(path, judge)

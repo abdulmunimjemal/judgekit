@@ -14,6 +14,7 @@ from judgekit.calibration import (
 from judgekit.drift import DriftMonitor, DriftStatus, kl_divergence, ks_test, psi, wasserstein
 from judgekit.harness import CalibrationStaleError, EvalResult, JudgeHarness
 from judgekit.judge import CalibrationSet, Judge, JudgeOutput, LabeledExample
+from judgekit.persistence import StateFormatError, StateMetadata, load_harness, load_metadata
 
 __version__ = "0.1.0"
 
@@ -32,6 +33,8 @@ __all__ = [
     "JudgeOutput",
     "LabeledExample",
     "PlattCalibrator",
+    "StateFormatError",
+    "StateMetadata",
     "TemperatureCalibrator",
     "bootstrap_ci",
     "cohens_kappa",
@@ -39,6 +42,8 @@ __all__ = [
     "kl_divergence",
     "krippendorff_alpha",
     "ks_test",
+    "load_harness",
+    "load_metadata",
     "psi",
     "select_calibrator",
     "wasserstein",
