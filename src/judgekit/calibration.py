@@ -1,24 +1,38 @@
 """Calibrators map raw judge scores to estimated ground-truth probabilities.
 
-Two calibrators are included:
+Five calibrators ship with judgekit:
 
-- ``PlattCalibrator``: fits a single-feature logistic regression on
-  (raw_score, label). Smooth, parametric, well-behaved with little data.
-- ``IsotonicCalibrator``: fits a monotone non-parametric mapping. More
-  flexible — better when the score-vs-truth curve is non-sigmoid — but
-  needs more data and can overfit on small sets.
+- ``PlattCalibrator``: single-feature logistic regression. Smooth, parametric,
+  needs both classes present in the calibration set.
+- ``IsotonicCalibrator``: monotone non-parametric mapping. Flexible but
+  data-hungry (~200+ anchors recommended).
+- ``TemperatureCalibrator``: single-parameter scaling (`T`). Treats raw scores
+  as probabilities, transforms to logits, scales by `1/T`, sigmoids back.
+  Cheapest model with the fewest assumptions; great default for small
+  calibration sets.
+- ``BetaCalibrator``: three-parameter Beta-distribution mapping
+  (Kull et al. 2017). Captures non-sigmoid curves that Platt misses while
+  staying parametric.
+- ``HistogramBinCalibrator``: equal-width bin; predicted probability is the
+  empirical label-mean inside each bin. Honest baseline; useful when the
+  miscalibration is shaped weirdly enough that nothing parametric fits.
 
-Both expose the same ``fit`` / ``predict`` interface so the harness can
-swap them transparently.
+All inherit the same ``fit`` / ``predict`` interface so the harness can swap
+them transparently. ``select_calibrator(n_anchors)`` picks a sensible default
+based on calibration-set size.
 
 ``bootstrap_ci`` is a small helper to compute confidence intervals around
-any aggregate of calibrated scores (mean, win-rate, etc.) by resampling
-the calibration set.
+any aggregate of calibrated scores by resampling the calibration set.
 
 Math references:
 - Platt (1999), "Probabilistic outputs for support vector machines"
 - Zadrozny & Elkan (2002), "Transforming classifier scores into accurate
   multiclass probability estimates" (isotonic)
+- Guo et al. (2017), "On Calibration of Modern Neural Networks" (temperature)
+- Kull et al. (2017), "Beta calibration: a well-founded and easily implemented
+  improvement on logistic calibration for binary classifiers"
+- Naeini et al. (2015), "Obtaining Well Calibrated Probabilities Using
+  Bayesian Binning" (histogram-binning baseline)
 """
 
 from __future__ import annotations
@@ -27,8 +41,26 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 
 import numpy as np
+from scipy.optimize import minimize_scalar
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
+
+# Clip raw scores away from exact 0/1 before applying logit so we don't blow
+# up on boundary inputs.
+_PROB_EPS = 1e-6
+
+
+def _logit(p: np.ndarray) -> np.ndarray:
+    """Log-odds of a probability array, with eps-clipping for stability."""
+    clipped = np.clip(p, _PROB_EPS, 1.0 - _PROB_EPS)
+    return np.asarray(np.log(clipped / (1.0 - clipped)), dtype=float)
+
+
+def _sigmoid(z: np.ndarray) -> np.ndarray:
+    """Numerically-stable sigmoid."""
+    return np.asarray(
+        np.where(z >= 0, 1.0 / (1.0 + np.exp(-z)), np.exp(z) / (1.0 + np.exp(z))), dtype=float
+    )
 
 
 class Calibrator(ABC):
@@ -107,6 +139,171 @@ class IsotonicCalibrator(Calibrator):
             raise RuntimeError("IsotonicCalibrator must be fit before predict()")
         raw_scores = np.asarray(raw_scores, dtype=float)
         return np.asarray(self._model.predict(raw_scores), dtype=float)
+
+
+class TemperatureCalibrator(Calibrator):
+    """Single-parameter temperature scaling.
+
+    Treats `raw_score` as a probability, converts to logit, divides by a
+    learned scalar `T`, and squashes back to probability via sigmoid. Because
+    only `T` is learned, this is the lowest-variance calibrator we ship —
+    great when you have <50 anchors. With `T == 1.0` it is the identity
+    transform.
+    """
+
+    def __init__(self) -> None:
+        self.T: float = 1.0
+
+    def fit(self, raw_scores: np.ndarray, labels: np.ndarray) -> TemperatureCalibrator:
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        labels = np.asarray(labels, dtype=float)
+        if raw_scores.shape[0] != labels.shape[0]:
+            raise ValueError("raw_scores and labels must have the same length")
+        if raw_scores.shape[0] < 2:
+            raise ValueError("need at least 2 examples to fit Temperature")
+
+        logits = _logit(raw_scores)
+
+        # Minimize negative log-likelihood over T in (eps, 100).
+        def nll(t: float) -> float:
+            if t <= 0:
+                return float("inf")
+            p = _sigmoid(logits / t)
+            # Clamp for log stability.
+            p = np.clip(p, _PROB_EPS, 1.0 - _PROB_EPS)
+            return float(-np.sum(labels * np.log(p) + (1.0 - labels) * np.log(1.0 - p)))
+
+        result = minimize_scalar(nll, bounds=(1e-3, 100.0), method="bounded")
+        self.T = float(result.x)
+        self.fitted = True
+        return self
+
+    def predict(self, raw_scores: np.ndarray) -> np.ndarray:
+        if not self.fitted:
+            raise RuntimeError("TemperatureCalibrator must be fit before predict()")
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        logits = _logit(raw_scores)
+        return _sigmoid(logits / self.T)
+
+
+class BetaCalibrator(Calibrator):
+    """Three-parameter Beta calibration (Kull et al. 2017).
+
+    Captures the family of curves
+        ``logit(p_cal) = a + b * log(p) - c * log(1 - p)``
+    where ``a``, ``b``, ``c`` are learned. Strictly more expressive than
+    Platt while keeping a parametric form; the right default when your
+    calibration set is 50 to 200 anchors.
+    """
+
+    def __init__(self) -> None:
+        self._model = LogisticRegression(solver="lbfgs", C=1e6)
+        # Coefficients exposed after fit so save/load can round-trip the
+        # parameters without needing the sklearn object.
+        self.a: float = 0.0
+        self.b: float = 0.0
+        self.c: float = 0.0
+
+    @staticmethod
+    def _features(raw_scores: np.ndarray) -> np.ndarray:
+        clipped = np.clip(raw_scores, _PROB_EPS, 1.0 - _PROB_EPS)
+        x1 = np.log(clipped)
+        x2 = -np.log(1.0 - clipped)
+        return np.asarray(np.column_stack([x1, x2]), dtype=float)
+
+    def fit(self, raw_scores: np.ndarray, labels: np.ndarray) -> BetaCalibrator:
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        labels = np.asarray(labels, dtype=float)
+        if raw_scores.shape[0] != labels.shape[0]:
+            raise ValueError("raw_scores and labels must have the same length")
+        if raw_scores.shape[0] < 3:
+            raise ValueError("need at least 3 examples to fit Beta")
+        binary = (labels >= 0.5).astype(int)
+        if len(np.unique(binary)) < 2:
+            raise ValueError(
+                "Beta needs both classes (some labels<0.5 and some>=0.5). "
+                "Use IsotonicCalibrator or HistogramBinCalibrator for one-sided "
+                "calibration sets."
+            )
+        features = self._features(raw_scores)
+        self._model.fit(features, binary)
+        # Cache parameters for inspection / persistence.
+        coef = self._model.coef_.ravel()
+        self.b = float(coef[0])
+        self.c = float(coef[1])
+        self.a = float(self._model.intercept_.ravel()[0])
+        self.fitted = True
+        return self
+
+    def predict(self, raw_scores: np.ndarray) -> np.ndarray:
+        if not self.fitted:
+            raise RuntimeError("BetaCalibrator must be fit before predict()")
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        features = self._features(raw_scores)
+        proba: np.ndarray = self._model.predict_proba(features)
+        return np.asarray(proba[:, 1], dtype=float)
+
+
+class HistogramBinCalibrator(Calibrator):
+    """Equal-width histogram binning. Honest baseline.
+
+    Splits raw_scores into ``n_bins`` equal-width buckets over [0, 1];
+    predicted probability for an input is the empirical mean of labels in
+    its bucket (or the prior label-mean if the bucket has no anchors).
+    """
+
+    def __init__(self, n_bins: int = 10) -> None:
+        if n_bins < 2:
+            raise ValueError("n_bins must be >= 2")
+        self.n_bins = n_bins
+        self._bin_edges: np.ndarray = np.asarray([])
+        self._bin_means: np.ndarray = np.asarray([])
+        self._prior: float = 0.5
+
+    def fit(self, raw_scores: np.ndarray, labels: np.ndarray) -> HistogramBinCalibrator:
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        labels = np.asarray(labels, dtype=float)
+        if raw_scores.shape[0] != labels.shape[0]:
+            raise ValueError("raw_scores and labels must have the same length")
+        if raw_scores.shape[0] < self.n_bins:
+            raise ValueError(f"need at least n_bins={self.n_bins} examples to fit HistogramBin")
+        self._bin_edges = np.linspace(0.0, 1.0, self.n_bins + 1)
+        # Bucket assignment for each anchor. np.digitize with edges of length
+        # n_bins+1 returns indices 1..n_bins inclusive on the open right side;
+        # we clamp to [0, n_bins-1] so we can index bin_means directly.
+        idx = np.clip(np.digitize(raw_scores, self._bin_edges[1:-1]), 0, self.n_bins - 1)
+        means = np.full(self.n_bins, np.nan, dtype=float)
+        for b in range(self.n_bins):
+            mask = idx == b
+            if mask.any():
+                means[b] = float(labels[mask].mean())
+        self._prior = float(labels.mean())
+        # Empty bins fall back to the prior.
+        means = np.where(np.isnan(means), self._prior, means)
+        self._bin_means = means
+        self.fitted = True
+        return self
+
+    def predict(self, raw_scores: np.ndarray) -> np.ndarray:
+        if not self.fitted:
+            raise RuntimeError("HistogramBinCalibrator must be fit before predict()")
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        idx = np.clip(np.digitize(raw_scores, self._bin_edges[1:-1]), 0, self.n_bins - 1)
+        return np.asarray(self._bin_means[idx], dtype=float)
+
+
+def select_calibrator(n_anchors: int) -> Calibrator:
+    """Return a sensible default calibrator for a given calibration-set size.
+
+    - ``n_anchors < 50``  -> :class:`TemperatureCalibrator` (single parameter).
+    - ``50 <= n_anchors < 200`` -> :class:`BetaCalibrator` (3 params).
+    - ``n_anchors >= 200`` -> :class:`IsotonicCalibrator` (non-parametric).
+    """
+    if n_anchors < 50:
+        return TemperatureCalibrator()
+    if n_anchors < 200:
+        return BetaCalibrator()
+    return IsotonicCalibrator()
 
 
 def bootstrap_ci(
