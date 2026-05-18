@@ -24,6 +24,7 @@ classifiers = [
 ]
 dependencies = [
   "numpy>=1.26",
+  "scipy>=1.11",
   "scikit-learn>=1.4",
 ]
 
@@ -61,6 +62,7 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
-# sklearn ships no py.typed marker as of 1.5; missing-imports is expected.
-module = ["sklearn.*"]
+# sklearn and scipy don't ship py.typed markers as of their current releases;
+# missing-imports is expected.
+module = ["sklearn.*", "scipy.*"]
 ignore_missing_imports = true
