@@ -14,6 +14,13 @@ from judgekit.calibration import (
 from judgekit.drift import DriftMonitor, DriftStatus, kl_divergence, ks_test, psi, wasserstein
 from judgekit.harness import CalibrationStaleError, EvalResult, JudgeHarness
 from judgekit.judge import CalibrationSet, Judge, JudgeOutput, LabeledExample
+from judgekit.pairwise import (
+    PairwiseHarness,
+    PairwiseJudge,
+    PairwiseOutcome,
+    PairwiseResult,
+    PairwiseVerdict,
+)
 from judgekit.persistence import StateFormatError, StateMetadata, load_harness, load_metadata
 
 __version__ = "0.1.0"
@@ -32,6 +39,11 @@ __all__ = [
     "JudgeHarness",
     "JudgeOutput",
     "LabeledExample",
+    "PairwiseHarness",
+    "PairwiseJudge",
+    "PairwiseOutcome",
+    "PairwiseResult",
+    "PairwiseVerdict",
     "PlattCalibrator",
     "StateFormatError",
     "StateMetadata",
