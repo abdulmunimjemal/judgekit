@@ -151,6 +151,7 @@ def _render_html(harness: JudgeHarness, result: EvalResult | None, title: str) -
     try:
         import jinja2
         import plotly.graph_objects as go
+        from markupsafe import Markup
         from plotly.io import to_html
     except ImportError as e:
         raise ImportError(_REPORT_EXTRA_HINT) from e
@@ -291,12 +292,21 @@ def _render_html(harness: JudgeHarness, result: EvalResult | None, title: str) -
     distribution_html = to_html(distribution_fig, include_plotlyjs=False, full_html=False)
     psi_gauge_html = to_html(psi_gauge, include_plotlyjs=False, full_html=False)
 
-    template = jinja2.Template(_TEMPLATE)
+    # Autoescape every interpolation in the template. We then mark the
+    # three plotly fragments as Markup so they are NOT escaped (they're
+    # already trusted HTML emitted by plotly, not user input). Any other
+    # string the template renders (title, calibrator_class, drift_verdict,
+    # ...) is treated as untrusted and HTML-escaped automatically.
+    env = jinja2.Environment(
+        autoescape=jinja2.select_autoescape(default=True, default_for_string=True),
+        keep_trailing_newline=True,
+    )
+    template = env.from_string(_TEMPLATE)
     return template.render(
         plotly_script="",
-        reliability_html=reliability_html,
-        distribution_html=distribution_html,
-        psi_gauge_html=psi_gauge_html,
+        reliability_html=Markup(reliability_html),
+        distribution_html=Markup(distribution_html),
+        psi_gauge_html=Markup(psi_gauge_html),
         **ctx.__dict__,
     )
 

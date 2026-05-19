@@ -170,17 +170,28 @@ class JudgeHarness:
         save_harness(self, path)
 
     @classmethod
-    def load(cls, path: str | Path, judge: Judge) -> JudgeHarness:
+    def load(
+        cls,
+        path: str | Path,
+        judge: Judge,
+        *,
+        allow_unsafe_pickle: bool = False,
+    ) -> JudgeHarness:
         """Restore a fitted harness from disk, reattaching ``judge``.
 
         The original judge identity is NOT persisted by ``save()``. The
         caller is responsible for passing in a judge that behaves like the
         one used at fit time; if it doesn't, the first ``evaluate()`` call
         will raise ``CalibrationStaleError`` (which is the right answer).
+
+        ``allow_unsafe_pickle`` defaults to False — the calibrator pickle is
+        loaded through a restricted unpickler that only accepts judgekit /
+        sklearn / scipy / numpy / safe-builtins. Set to True only when
+        loading a file from a fully trusted source. See ``SECURITY.md``.
         """
         from judgekit.persistence import load_harness
 
-        return load_harness(path, judge)
+        return load_harness(path, judge, allow_unsafe_pickle=allow_unsafe_pickle)
 
     def report(
         self,

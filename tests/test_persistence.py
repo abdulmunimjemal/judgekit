@@ -211,3 +211,83 @@ def test_save_is_idempotent_overwrite(tmp_path: Path) -> None:
     harness.save(target)
     second_mtime = (target / "state.json").stat().st_mtime
     assert second_mtime >= first_mtime
+
+
+# ---------- Restricted unpickler ----------
+
+
+def test_restricted_unpickler_refuses_os_system(tmp_path: Path) -> None:
+    """Crafted calibrator.pkl that references os.system must be refused."""
+    harness = _make_harness()
+    target = tmp_path / "judge.judgekit"
+    harness.save(target)
+
+    # Build a malicious pickle that pulls in os.system. We don't actually
+    # call it — we just verify the unpickler refuses to even resolve the
+    # reference. We hand-write the GLOBAL opcode (`c<module>\n<name>\n.`)
+    # so test setup itself never imports or executes the gadget.
+    payload = b"cos\nsystem\n."
+    (target / "calibrator.pkl").write_bytes(payload)
+
+    judge = _SeededJudge(seed=42)
+    with pytest.raises(StateFormatError, match=r"RestrictedUnpickler refused"):
+        JudgeHarness.load(target, judge=judge)
+
+
+def test_allow_unsafe_pickle_bypasses_restriction(tmp_path: Path) -> None:
+    """Setting allow_unsafe_pickle=True falls back to the stdlib unpickler.
+
+    We verify the path is wired up: the same regular pickle that loads fine
+    via the restricted path also loads via the unrestricted path. A true
+    bypass test (loading a class the restriction would refuse) is intentionally
+    not exercised here — we don't want to make it convenient to forge.
+    """
+    harness = _make_harness()
+    target = tmp_path / "judge.judgekit"
+    harness.save(target)
+
+    judge = _SeededJudge(seed=99)
+    loaded = JudgeHarness.load(target, judge=judge, allow_unsafe_pickle=True)
+    assert loaded.fitted
+
+
+def test_restricted_unpickler_accepts_all_calibrator_classes(tmp_path: Path) -> None:
+    """All 5 calibrators must round-trip cleanly through the restricted unpickler."""
+    import numpy as np
+
+    from judgekit import (
+        BetaCalibrator,
+        HistogramBinCalibrator,
+        IsotonicCalibrator,
+        PlattCalibrator,
+        TemperatureCalibrator,
+    )
+
+    for cal_cls in [
+        PlattCalibrator,
+        IsotonicCalibrator,
+        TemperatureCalibrator,
+        BetaCalibrator,
+        HistogramBinCalibrator,
+    ]:
+        judge = _SeededJudge(seed=0)
+        rng = np.random.default_rng(0)
+        examples = []
+        n = 220 if cal_cls is BetaCalibrator else 160
+        for i in range(n):
+            label = float(rng.uniform(0, 1))
+            item = f"cal-{cal_cls.__name__}-{i}"
+            judge.register(item, label)
+            examples.append(LabeledExample(item=item, label=label))
+        harness = JudgeHarness(
+            judge=judge,
+            calibration_set=CalibrationSet(examples=examples),
+            calibrator=cal_cls(),
+        ).fit()
+
+        target = tmp_path / f"{cal_cls.__name__}.judgekit"
+        harness.save(target)
+        loaded = JudgeHarness.load(target, judge=judge)  # restricted by default
+        assert isinstance(loaded.calibrator, cal_cls), (
+            f"restricted unpickler rejected legitimate {cal_cls.__name__}"
+        )
