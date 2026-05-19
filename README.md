@@ -20,7 +20,14 @@ When drift exceeds the configured threshold, `JudgeHarness.evaluate()` **raises*
 pip install judgekit
 ```
 
-Python 3.10+. Dependencies: `numpy`, `scikit-learn`.
+Python 3.10+. Dependencies: `numpy`, `scipy`, `scikit-learn`.
+
+Optional extras:
+
+```bash
+pip install 'judgekit[report]'   # HTML eval reports (plotly + jinja2)
+pip install 'judgekit[all]'      # everything optional
+```
 
 ---
 
@@ -50,13 +57,24 @@ calset = CalibrationSet(examples=[
 harness = JudgeHarness(judge=my_judge, calibration_set=calset).fit()
 
 # 4. Use in CI before publishing eval numbers.
-result = harness.evaluate(my_eval_items)   # raises if judge drift > threshold
-
+result = harness.evaluate(my_eval_items)
 print(result.point_estimate, result.confidence_interval)
 # 0.7423, (0.6981, 0.7864)
 ```
 
-If your judge-model rolled overnight and the score distribution shifted, step 4 raises `CalibrationStaleError` — you re-fit on a fresh calibration set before reporting numbers. No silent regressions.
+**Strict mode.** By default `JudgeHarness` is `strict=True`: `evaluate()` raises `CalibrationStaleError` when the score distribution has drifted (PSI ≥ 0.25) since fit-time. This is on purpose — silent drift is what we're guarding against.
+
+**Heads up for small toy data.** PSI is noisy under ~100 calibration items, so the quickstart can trip the strict-mode guard on small toys. While you're learning the library, pass `JudgeHarness(..., strict=False)` and inspect `result.drift` yourself; for real eval pipelines keep `strict=True`.
+
+```python
+# Learning / exploration mode — warning, not refusal.
+harness = JudgeHarness(judge=my_judge, calibration_set=calset, strict=False).fit()
+result = harness.evaluate(my_eval_items)
+if result.drift.is_drifted:
+    print(f"⚠ judge drift (PSI={result.drift.psi:.3f}) — recalibrate before shipping")
+```
+
+If your judge-model rolled overnight and the score distribution shifted, the strict-mode path raises `CalibrationStaleError` — you re-fit on a fresh calibration set before reporting numbers. No silent regressions.
 
 ---
 
@@ -65,11 +83,17 @@ If your judge-model rolled overnight and the score distribution shifted, step 4 
 | Module | What's in it |
 |---|---|
 | `judgekit.judge` | `Judge` protocol, `JudgeOutput`, `LabeledExample`, `CalibrationSet` |
-| `judgekit.calibration` | `PlattCalibrator`, `IsotonicCalibrator`, `bootstrap_ci` |
-| `judgekit.drift` | `DriftMonitor`, `kl_divergence`, `psi` |
+| `judgekit.calibration` | `Calibrator` ABC + `PlattCalibrator`, `IsotonicCalibrator`, `TemperatureCalibrator`, `BetaCalibrator`, `HistogramBinCalibrator`, `select_calibrator`, `bootstrap_ci` |
+| `judgekit.drift` | `DriftMonitor`, `DriftStatus`, `kl_divergence`, `psi`, `ks_test`, `wasserstein` |
+| `judgekit.agreement` | `cohens_kappa`, `fleiss_kappa`, `krippendorff_alpha` |
+| `judgekit.pairwise` | `PairwiseJudge` protocol, `PairwiseVerdict`, `PairwiseOutcome`, `PairwiseHarness`, `PairwiseResult` |
+| `judgekit.bias` | `position_bias`, `verbosity_bias`, `format_sensitivity`, `BiasReport` |
+| `judgekit.persistence` | `load_harness`, `load_metadata`, `StateMetadata`, `StateFormatError` |
 | `judgekit.harness` | `JudgeHarness`, `EvalResult`, `CalibrationStaleError` |
+| `judgekit.report` | HTML report (requires `[report]` extra) |
+| `judgekit.cli` | `judgekit` console script |
 
-Default calibrator is `IsotonicCalibrator` (flexible, non-parametric). Use `PlattCalibrator()` when your calibration set is small (<100) and you want a smoother parametric fit.
+Default calibrator is `IsotonicCalibrator` (flexible, non-parametric). For smaller calibration sets, use `select_calibrator(n_anchors)` — it returns `TemperatureCalibrator` for <50 anchors, `BetaCalibrator` for 50–200, `IsotonicCalibrator` for ≥200.
 
 ---
 

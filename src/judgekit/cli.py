@@ -9,10 +9,13 @@
   one-shot calibration without writing Python.
 - ``judgekit report STATE --html PATH`` — load a saved state and emit
   an HTML report at PATH.
-- ``judgekit audit --judge-traces FILE`` — run verbosity-bias audit on
-  a pointwise judge given a JSONL of (item, score) records. (Position
-  and format audits require live judge access, so they're not exposed
-  via CLI.)
+- ``judgekit audit-verbosity --judge-traces FILE`` — run a verbosity-bias
+  audit on a pointwise judge given a JSONL of (item, score) records.
+  (Position and format audits require live judge access, so they're not
+  exposed via CLI.)
+- ``judgekit audit ...`` — deprecated alias for ``audit-verbosity``.
+  Will become the umbrella command in v1.1 once we collect position
+  and format-sensitivity into one batch run.
 
 JSONL formats:
 
@@ -170,6 +173,17 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit_legacy(args: argparse.Namespace) -> int:
+    """Deprecated alias for `audit-verbosity`. Prints a warning then forwards."""
+    print(
+        "DEPRECATION: `judgekit audit` will become an umbrella command "
+        "(running every audit) in v1.1. Use `judgekit audit-verbosity` for "
+        "the verbosity-only audit going forward.",
+        file=sys.stderr,
+    )
+    return _cmd_audit(args)
+
+
 def _cmd_audit(args: argparse.Namespace) -> int:
     """Run a verbosity-bias audit from a JSONL traces file."""
     from judgekit.bias import verbosity_bias
@@ -237,12 +251,28 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument("--title", default=None, help="Optional report title.")
     report.set_defaults(func=_cmd_report)
 
-    audit = sub.add_parser(
-        "audit",
+    # `audit-verbosity` is the v1.0 specific command. We reserve plain
+    # `audit` as the future umbrella that runs every audit (position,
+    # verbosity, format-sensitivity). Until v1.1 ships that, `audit` is
+    # a deprecation shim that forwards to `audit-verbosity`.
+    audit_verb = sub.add_parser(
+        "audit-verbosity",
         help="Run a verbosity-bias audit on a pointwise judge's traces JSONL.",
     )
-    audit.add_argument("--judge-traces", required=True, help="JSONL of {item, score} records.")
-    audit.set_defaults(func=_cmd_audit)
+    audit_verb.add_argument("--judge-traces", required=True, help="JSONL of {item, score} records.")
+    audit_verb.set_defaults(func=_cmd_audit)
+
+    audit_legacy = sub.add_parser(
+        "audit",
+        help=(
+            "DEPRECATED alias for `audit-verbosity`. Will become an umbrella "
+            "command (running every audit) in v1.1."
+        ),
+    )
+    audit_legacy.add_argument(
+        "--judge-traces", required=True, help="JSONL of {item, score} records."
+    )
+    audit_legacy.set_defaults(func=_cmd_audit_legacy)
 
     return parser
 

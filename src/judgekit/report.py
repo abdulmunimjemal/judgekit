@@ -137,12 +137,23 @@ def _reliability_data(
     return pred, obs, counts
 
 
+_REPORT_EXTRA_HINT = (
+    "judgekit's HTML report needs the optional [report] extra "
+    "(jinja2 + plotly). Install it with:\n\n"
+    "    pip install 'judgekit[report]'\n\n"
+    "or pip install 'judgekit[all]' to pull every optional integration."
+)
+
+
 def _render_html(harness: JudgeHarness, result: EvalResult | None, title: str) -> str:
     from datetime import datetime, timezone
 
-    import jinja2
-    import plotly.graph_objects as go
-    from plotly.io import to_html
+    try:
+        import jinja2
+        import plotly.graph_objects as go
+        from plotly.io import to_html
+    except ImportError as e:
+        raise ImportError(_REPORT_EXTRA_HINT) from e
 
     from judgekit import __version__ as judgekit_version
 
