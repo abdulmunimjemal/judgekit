@@ -17,6 +17,19 @@ secrets and connection state we shouldn't try to serialize.
 
 A judgekit state file with major-version newer than the running judgekit
 is refused. Minor-version newer is allowed but warnings can be added.
+
+Security
+--------
+Plain ``pickle.load`` is a known arbitrary-code-execution surface — any
+pickle stream can call any callable on import. judgekit ships a
+:class:`RestrictedUnpickler` that only allows classes coming from
+``judgekit``, ``sklearn``, ``scipy``, ``numpy``, and a small allow-list
+of built-ins / collections. Anything else raises
+:class:`StateFormatError` immediately. This is enforced by default in
+:func:`load_harness`; pass ``allow_unsafe_pickle=True`` only when
+loading a file you produced yourself in a trusted context (e.g. CI
+artifact from your own pipeline) and want to bypass the allow-list.
+See :doc:`SECURITY.md </SECURITY>` for the threat model.
 """
 
 from __future__ import annotations
@@ -47,6 +60,86 @@ if TYPE_CHECKING:
 # Bump the MAJOR component when the on-disk format changes incompatibly.
 # MINOR component: added optional fields that older loaders should ignore.
 STATE_FORMAT_VERSION = "1.0"
+
+
+# Allow-list for the restricted unpickler. We accept classes whose fully
+# qualified module name starts with any of these prefixes, plus a small
+# set of explicit (module, name) pairs from `builtins` / `collections`.
+# Everything else is refused.
+_ALLOWED_MODULE_PREFIXES: tuple[str, ...] = (
+    "judgekit.",
+    "sklearn.",
+    "scipy.",
+    "numpy.",
+    "numpy",  # bare "numpy" (e.g. numpy.ndarray's __module__ in some versions)
+    "joblib.",
+)
+
+_ALLOWED_BUILTINS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("builtins", "object"),
+        ("builtins", "list"),
+        ("builtins", "tuple"),
+        ("builtins", "dict"),
+        ("builtins", "set"),
+        ("builtins", "frozenset"),
+        ("builtins", "int"),
+        ("builtins", "float"),
+        ("builtins", "bool"),
+        ("builtins", "str"),
+        ("builtins", "bytes"),
+        ("builtins", "bytearray"),
+        ("builtins", "complex"),
+        ("builtins", "NoneType"),
+        ("builtins", "type"),
+        ("builtins", "slice"),
+        ("builtins", "range"),
+        ("collections", "OrderedDict"),
+        ("collections", "defaultdict"),
+        ("collections", "deque"),
+        ("collections", "Counter"),
+        ("copyreg", "_reconstructor"),
+        ("copyreg", "__newobj__"),
+        ("copyreg", "__newobj_ex__"),
+    }
+)
+
+
+class RestrictedUnpickler(pickle.Unpickler):
+    """A :mod:`pickle` Unpickler that refuses classes outside the allow-list.
+
+    Pickle streams can reference *any* callable, including ``os.system``
+    and other gadget primitives. This subclass overrides
+    :meth:`pickle.Unpickler.find_class` and accepts a class reference
+    only if its module starts with one of :data:`_ALLOWED_MODULE_PREFIXES`
+    OR the ``(module, name)`` pair is in :data:`_ALLOWED_BUILTINS`.
+
+    Anything else raises :class:`StateFormatError` with a message that
+    names the offending reference, so a calling user can see exactly
+    what was rejected.
+    """
+
+    def find_class(self, module: str, name: str) -> Any:
+        if (module, name) in _ALLOWED_BUILTINS:
+            return super().find_class(module, name)
+        for prefix in _ALLOWED_MODULE_PREFIXES:
+            if module == prefix.rstrip(".") or module.startswith(prefix):
+                return super().find_class(module, name)
+        raise StateFormatError(
+            f"RestrictedUnpickler refused to load {module}.{name}. "
+            "Only judgekit / sklearn / scipy / numpy / joblib / "
+            "safe-builtins are allowed in calibrator.pkl. If you trust "
+            "this file and need to load it anyway, pass "
+            "allow_unsafe_pickle=True to load_harness()."
+        )
+
+
+def _safe_pickle_load(fh: object, *, allow_unsafe: bool = False) -> Any:
+    """Load a pickle stream, defaulting to the restricted unpickler."""
+    if allow_unsafe:
+        return pickle.load(fh)  # type: ignore[arg-type]
+    return RestrictedUnpickler(fh).load()  # type: ignore[arg-type]
+
 
 _CALIBRATOR_REGISTRY: dict[str, type[Calibrator]] = {
     "PlattCalibrator": PlattCalibrator,
@@ -149,7 +242,12 @@ def load_metadata(path: str | Path) -> StateMetadata:
     )
 
 
-def load_harness(path: str | Path, judge: Judge) -> JudgeHarness:
+def load_harness(
+    path: str | Path,
+    judge: Judge,
+    *,
+    allow_unsafe_pickle: bool = False,
+) -> JudgeHarness:
     """Restore a fitted `JudgeHarness` from disk and reattach a live judge.
 
     The `judge` argument is NOT validated against the original — we don't
@@ -157,6 +255,13 @@ def load_harness(path: str | Path, judge: Judge) -> JudgeHarness:
     right judge. If you want to detect drift between the original judge
     and the new one, run `harness.evaluate(...)` on a held-out set and
     inspect the drift status.
+
+    By default the calibrator pickle is loaded via :class:`RestrictedUnpickler`,
+    which refuses any class outside the judgekit / sklearn / scipy /
+    numpy / safe-builtins allow-list. Pass ``allow_unsafe_pickle=True``
+    only when loading a file you produced yourself in a trusted context
+    and you need to bypass the allow-list (e.g. a third-party calibrator
+    subclass). See ``SECURITY.md`` for the threat model.
     """
     # Import here to avoid the import cycle (harness imports drift, drift
     # is independent; we import harness lazily so persistence can be
@@ -169,7 +274,7 @@ def load_harness(path: str | Path, judge: Judge) -> JudgeHarness:
     source = Path(path)
 
     with (source / "calibrator.pkl").open("rb") as fh:
-        loaded_calibrator: Calibrator = pickle.load(fh)
+        loaded_calibrator: Calibrator = _safe_pickle_load(fh, allow_unsafe=allow_unsafe_pickle)
     if type(loaded_calibrator).__name__ != metadata.calibrator_class:
         raise StateFormatError(
             f"calibrator.pkl contains {type(loaded_calibrator).__name__} but "

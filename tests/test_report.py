@@ -124,6 +124,20 @@ def test_report_baseline_only_when_no_result(tmp_path: Path) -> None:
     assert "—" in content
 
 
+def test_report_escapes_title_html(tmp_path: Path) -> None:
+    """Jinja2 autoescape must HTML-escape the title (and other interpolated
+    strings). Verified by trying an XSS-flavored title and asserting the
+    raw ``<script>`` tag does not survive to the output."""
+    harness = _make_fitted_harness()
+    out = tmp_path / "xss.html"
+    harness.report(out, title="<script>alert('xss')</script>")
+    content = out.read_text()
+    # The raw script tag must be HTML-escaped in the title field.
+    assert "<script>alert('xss')</script>" not in content
+    # Escaped form should be present somewhere (in the <title> or <h1>).
+    assert "&lt;script&gt;" in content
+
+
 def test_report_extra_missing_raises_friendly_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
