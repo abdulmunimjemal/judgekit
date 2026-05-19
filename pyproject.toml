@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "judgekit"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Calibrate, monitor, and refuse to ship miscalibrated LLM judges."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,20 +12,25 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Abdulmunim Jemal", email = "abdulmunimjemal@gmail.com" }]
 keywords = ["llm", "evals", "judge", "calibration", "drift", "ai-engineering"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
   "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
 ]
 dependencies = [
-  "numpy>=1.26",
-  "scipy>=1.11",
-  "scikit-learn>=1.4",
+  # Pin major-version ceilings so a numpy/scipy/sklearn major bump doesn't
+  # silently break consumers of a frozen v1.x line.
+  "numpy>=1.26,<3",
+  "scipy>=1.11,<2",
+  "scikit-learn>=1.4,<2",
 ]
 
 [project.optional-dependencies]
@@ -39,12 +44,18 @@ dev = [
   "statsmodels>=0.14",
   "krippendorff>=0.6",
   # Test the [report] extra in CI.
-  "plotly>=5.20",
-  "jinja2>=3.1",
+  "plotly>=5.20,<7",
+  "jinja2>=3.1,<4",
+  # Build/publish tooling.
+  "build>=1.2",
+  "twine>=5.0",
 ]
 report = [
-  "plotly>=5.20",
-  "jinja2>=3.1",
+  "plotly>=5.20,<7",
+  "jinja2>=3.1,<4",
+]
+all = [
+  "judgekit[report]",
 ]
 
 [project.scripts]
@@ -54,8 +65,26 @@ judgekit = "judgekit.cli:main"
 Homepage = "https://github.com/abdulmunimjemal/judgekit"
 Issues = "https://github.com/abdulmunimjemal/judgekit/issues"
 
+[tool.hatch.version]
+path = "src/judgekit/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/judgekit",
+  "tests",
+  "README.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "LICENSE",
+  "pyproject.toml",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/judgekit"]
+# Include the PEP 561 py.typed marker so downstream typecheckers
+# (mypy, pyright) read our type annotations.
+[tool.hatch.build.targets.wheel.force-include]
+"src/judgekit/py.typed" = "judgekit/py.typed"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
