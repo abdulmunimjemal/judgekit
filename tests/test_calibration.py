@@ -105,6 +105,13 @@ def test_bootstrap_rejects_bad_confidence() -> None:
         bootstrap_ci(np.array([0.1, 0.2]), confidence=1.5)
 
 
+def test_bootstrap_ci_kwargs_are_keyword_only() -> None:
+    """``n_resamples`` / ``confidence`` / ``rng`` are frozen as keyword-only at v1.0."""
+    with pytest.raises(TypeError):
+        # Third positional used to be n_resamples.
+        bootstrap_ci(np.array([0.1, 0.2, 0.3]), np.mean, 500)  # type: ignore[misc]
+
+
 # ---------- TemperatureCalibrator ----------
 
 

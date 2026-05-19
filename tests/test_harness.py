@@ -160,3 +160,63 @@ def test_harness_default_calibrator_is_isotonic() -> None:
     calset = _build_calibration_set(judge, n=20)
     harness = JudgeHarness(judge=judge, calibration_set=calset)
     assert isinstance(harness.calibrator, IsotonicCalibrator)
+
+
+def test_harness_kwargs_past_calibration_set_are_keyword_only() -> None:
+    """``calibrator`` and the threshold knobs must be keyword-only at v1.0.
+
+    This is the frozen contract — callers passing them positionally will
+    get a TypeError, so we won't silently shift positional meanings in a
+    future minor.
+    """
+    judge = _LinearJudge(seed=11)
+    calset = _build_calibration_set(judge, n=20)
+    with pytest.raises(TypeError):
+        # Third positional arg used to be ``calibrator``.
+        JudgeHarness(judge, calset, IsotonicCalibrator())  # type: ignore[misc]
+
+
+def test_calibration_stale_error_is_judgekit_error() -> None:
+    """All judgekit errors must inherit from JudgekitError."""
+    from judgekit import JudgekitError
+
+    judge = _LinearJudge(noise=0.05, seed=12)
+    calset = _build_calibration_set(judge, n=80)
+    harness = JudgeHarness(judge=judge, calibration_set=calset).fit()
+    shifted = _ShiftedJudge(bias=0.4, seed=13)
+    items = []
+    for i, label in enumerate([0.1, 0.3, 0.5] * 30):
+        item = f"jke-{i}"
+        shifted.register(item, label)
+        items.append(item)
+    harness.judge = shifted  # type: ignore[assignment]
+
+    # A single base-class catch covers everything judgekit raises.
+    with pytest.raises(JudgekitError):
+        harness.evaluate(items)
+
+
+def test_eval_result_confidence_interval_is_named_tuple() -> None:
+    """``confidence_interval`` exposes named ``.lower`` / ``.upper`` accessors
+    but stays tuple-compatible so ``lo, hi = result.confidence_interval``
+    keeps working."""
+    judge = _LinearJudge(noise=0.05, seed=14)
+    calset = _build_calibration_set(judge, n=400)
+    # strict=False so a small sampling-induced PSI fluctuation can't make
+    # this contract test brittle — we're checking the CI shape, not drift.
+    harness = JudgeHarness(judge=judge, calibration_set=calset, strict=False).fit()
+    eval_rng = np.random.default_rng(15)
+    items = []
+    for i in range(200):
+        label = float(eval_rng.uniform(0, 1))
+        item = f"ci-{i}"
+        judge.register(item, label)
+        items.append(item)
+    result = harness.evaluate(items, rng=eval_rng)
+    ci = result.confidence_interval
+    # Named-tuple accessors.
+    assert ci.lower <= result.point_estimate <= ci.upper
+    # Still iterable / unpackable like a plain tuple.
+    lo, hi = ci
+    assert (lo, hi) == (ci.lower, ci.upper)
+    assert isinstance(ci, tuple)

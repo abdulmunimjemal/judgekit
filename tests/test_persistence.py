@@ -251,6 +251,62 @@ def test_allow_unsafe_pickle_bypasses_restriction(tmp_path: Path) -> None:
     assert loaded.fitted
 
 
+def test_state_schema_v1_1_fields_round_trip(tmp_path: Path) -> None:
+    """Saved state.json must include the v1.1 schema additions."""
+    import json as _json
+
+    harness = _make_harness()
+    target = tmp_path / "v11.judgekit"
+    harness.save(target)
+    raw = _json.loads((target / "state.json").read_text())
+
+    assert raw["format_version"].startswith("1.")
+    assert "drift_thresholds" in raw
+    assert set(raw["drift_thresholds"]) >= {
+        "psi_warn",
+        "psi_fail",
+        "ks_p_threshold",
+        "wasserstein_threshold",
+    }
+    assert raw["harness_class"] == "JudgeHarness"
+    assert raw["score_range"] == [0.0, 1.0]
+    assert raw["drift_bins"] == 10
+    assert "schema_extras" in raw
+    assert "calibrator_params" in raw
+
+    meta = load_metadata(target)
+    assert meta.drift_bins == 10
+    assert meta.harness_class == "JudgeHarness"
+    assert meta.score_range == (0.0, 1.0)
+
+
+def test_load_handles_legacy_1_0_state(tmp_path: Path) -> None:
+    """A 1.0 state.json (without the new fields) must still load cleanly."""
+    import json as _json
+
+    harness = _make_harness()
+    target = tmp_path / "legacy.judgekit"
+    harness.save(target)
+
+    raw = _json.loads((target / "state.json").read_text())
+    # Strip the v1.1 additions and downgrade the version marker.
+    for k in (
+        "drift_thresholds",
+        "calibrator_params",
+        "harness_class",
+        "score_range",
+        "drift_bins",
+        "schema_extras",
+    ):
+        raw.pop(k, None)
+    raw["format_version"] = "1.0"
+    (target / "state.json").write_text(_json.dumps(raw))
+
+    judge = _SeededJudge(seed=42)
+    loaded = JudgeHarness.load(target, judge=judge)
+    assert loaded.fitted is True
+
+
 def test_restricted_unpickler_accepts_all_calibrator_classes(tmp_path: Path) -> None:
     """All 5 calibrators must round-trip cleanly through the restricted unpickler."""
     import numpy as np

@@ -194,3 +194,21 @@ def test_per_pair_scores_match_n_pairs() -> None:
     result = harness.evaluate(pairs, position_bias_correct=False)
     assert result.per_pair_scores.shape == (3,)
     assert isinstance(result, PairwiseResult)
+
+
+def test_pairwise_confidence_is_keyword_only() -> None:
+    """v1.0 freezes ``confidence`` as keyword-only."""
+    with pytest.raises(TypeError):
+        PairwiseHarness(_DeterministicJudge(), 0.9)  # type: ignore[misc]
+
+
+def test_pairwise_result_ci_is_named_tuple() -> None:
+    """``win_rate_a_ci`` exposes ``.lower`` / ``.upper`` and stays tuple-like."""
+    harness = PairwiseHarness(_DeterministicJudge())
+    pairs = [("a", "b"), ("c", "d"), ("e", "f")] * 5
+    result = harness.evaluate(pairs, rng=np.random.default_rng(0))
+    ci = result.win_rate_a_ci
+    assert ci.lower <= result.win_rate_a <= ci.upper
+    lo, hi = ci
+    assert (lo, hi) == (ci.lower, ci.upper)
+    assert isinstance(ci, tuple)

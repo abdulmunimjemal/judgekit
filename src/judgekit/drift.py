@@ -148,6 +148,7 @@ class DriftMonitor:
     def __init__(
         self,
         reference_scores: np.ndarray,
+        *,
         bins: int = 10,
         psi_warn: float = 0.10,
         psi_fail: float = 0.25,

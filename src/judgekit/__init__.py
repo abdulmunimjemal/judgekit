@@ -5,6 +5,7 @@ from judgekit.bias import BiasReport, format_sensitivity, position_bias, verbosi
 from judgekit.calibration import (
     BetaCalibrator,
     Calibrator,
+    ConfidenceInterval,
     HistogramBinCalibrator,
     IsotonicCalibrator,
     PlattCalibrator,
@@ -13,6 +14,7 @@ from judgekit.calibration import (
     select_calibrator,
 )
 from judgekit.drift import DriftMonitor, DriftStatus, kl_divergence, ks_test, psi, wasserstein
+from judgekit.exceptions import JudgekitError
 from judgekit.harness import CalibrationStaleError, EvalResult, JudgeHarness
 from judgekit.judge import CalibrationSet, Judge, JudgeOutput, LabeledExample
 from judgekit.pairwise import (
@@ -32,6 +34,7 @@ __all__ = [
     "CalibrationSet",
     "CalibrationStaleError",
     "Calibrator",
+    "ConfidenceInterval",
     "DriftMonitor",
     "DriftStatus",
     "EvalResult",
@@ -40,6 +43,7 @@ __all__ = [
     "Judge",
     "JudgeHarness",
     "JudgeOutput",
+    "JudgekitError",
     "LabeledExample",
     "PairwiseHarness",
     "PairwiseJudge",

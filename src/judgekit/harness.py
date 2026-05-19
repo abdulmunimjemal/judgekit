@@ -27,15 +27,21 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from judgekit.calibration import Calibrator, IsotonicCalibrator, bootstrap_ci
+from judgekit.calibration import (
+    Calibrator,
+    ConfidenceInterval,
+    IsotonicCalibrator,
+    bootstrap_ci,
+)
 from judgekit.drift import DriftMonitor, DriftStatus
+from judgekit.exceptions import JudgekitError
 from judgekit.judge import CalibrationSet, Judge
 
 if TYPE_CHECKING:
     pass
 
 
-class CalibrationStaleError(RuntimeError):
+class CalibrationStaleError(JudgekitError):
     """Raised when score-distribution drift exceeds the harness threshold."""
 
     def __init__(self, status: DriftStatus) -> None:
@@ -54,7 +60,7 @@ class EvalResult:
     calibrated_scores: np.ndarray
     raw_scores: np.ndarray
     point_estimate: float
-    confidence_interval: tuple[float, float]
+    confidence_interval: ConfidenceInterval
     confidence: float
     drift: DriftStatus
     n: int = field(init=False)
@@ -78,6 +84,7 @@ class JudgeHarness:
         self,
         judge: Judge,
         calibration_set: CalibrationSet,
+        *,
         calibrator: Calibrator | None = None,
         confidence: float = 0.95,
         psi_warn: float = 0.10,
@@ -154,7 +161,7 @@ class JudgeHarness:
             calibrated_scores=calibrated,
             raw_scores=raw,
             point_estimate=point,
-            confidence_interval=(lo, hi),
+            confidence_interval=ConfidenceInterval(lower=lo, upper=hi),
             confidence=self.confidence,
             drift=drift,
         )

@@ -4,6 +4,16 @@ All notable changes to `judgekit` are documented here. Format adapted from [Keep
 
 ## [Unreleased]
 
+### Added
+
+- `judgekit.JudgekitError` base exception. Every error judgekit raises now inherits from it, so a single `except JudgekitError` catches the entire library. `CalibrationStaleError` and `StateFormatError` continue to inherit from `RuntimeError` transitively, so existing `except RuntimeError` blocks still work.
+- `judgekit.ConfidenceInterval` NamedTuple. `EvalResult.confidence_interval` and `PairwiseResult.win_rate_a_ci` now return this type, which exposes `.lower` / `.upper` accessors while staying tuple-compatible — `lo, hi = result.confidence_interval` keeps working.
+- State format `1.1`: `state.json` now records `drift_thresholds`, `calibrator_params`, `harness_class`, `score_range`, `drift_bins`, and a forward-compat `schema_extras` slot. Loading a `1.0` state still works — the new fields default sensibly when missing.
+
+### Changed
+
+- **API freeze (breaking, intentional, v1.0-only window).** Every argument past the second positional one on the four public constructors / helpers is now keyword-only: `JudgeHarness(judge, calibration_set, *, calibrator=..., confidence=..., psi_warn=..., psi_fail=..., strict=...)`, `DriftMonitor(reference_scores, *, bins=..., psi_warn=..., psi_fail=..., method=..., ks_p_threshold=..., wasserstein_threshold=...)`, `PairwiseHarness(judge, *, confidence=...)`, and `bootstrap_ci(scores, statistic=..., *, n_resamples=..., confidence=..., rng=...)`. This freezes the call shape for v1.x so we can add parameters later without shifting positional meanings.
+
 ## [1.0.0rc1] — 2026-05-19
 
 First public release candidate. Public-API contract: every symbol re-exported from `judgekit.__init__.__all__`, every CLI subcommand and flag listed in `judgekit --help`, and every field in `state.json` will retain its name, signature, and semantics through all v1.x releases. Additions are allowed; removals or renames require v2.0.

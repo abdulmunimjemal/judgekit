@@ -213,3 +213,11 @@ def test_drift_monitor_psi_method_skips_extras() -> None:
     assert status.ks_statistic is None
     assert status.ks_pvalue is None
     assert status.wasserstein_distance is None
+
+
+def test_drift_monitor_kwargs_are_keyword_only() -> None:
+    """``bins`` and every threshold knob must be keyword-only at v1.0."""
+    ref = np.linspace(0, 1, 50)
+    with pytest.raises(TypeError):
+        # Second positional used to be ``bins``.
+        DriftMonitor(ref, 20)  # type: ignore[misc]

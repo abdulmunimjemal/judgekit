@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import json
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -50,6 +50,7 @@ from judgekit.calibration import (
     PlattCalibrator,
     TemperatureCalibrator,
 )
+from judgekit.exceptions import JudgekitError
 
 if TYPE_CHECKING:
     from judgekit.calibration import Calibrator
@@ -59,7 +60,11 @@ if TYPE_CHECKING:
 
 # Bump the MAJOR component when the on-disk format changes incompatibly.
 # MINOR component: added optional fields that older loaders should ignore.
-STATE_FORMAT_VERSION = "1.0"
+#
+# 1.1 — added `drift_thresholds`, `calibrator_params`, `harness_class`,
+#       `score_range`, `drift_bins`, `schema_extras`. Loaders for 1.0 read
+#       these as missing-defaults; they don't break compatibility.
+STATE_FORMAT_VERSION = "1.1"
 
 
 # Allow-list for the restricted unpickler. We accept classes whose fully
@@ -156,6 +161,11 @@ class StateMetadata:
 
     Exposed for tooling (CLI, report, integrations) so callers can
     inspect a saved state without unpickling.
+
+    The fields from format ``1.1`` onwards (``drift_thresholds``,
+    ``calibrator_params``, ``harness_class``, ``score_range``,
+    ``drift_bins``, ``schema_extras``) default sensibly when reading an
+    older 1.0 state — no migration step required.
     """
 
     format_version: str
@@ -168,9 +178,16 @@ class StateMetadata:
     drift_method: str
     fitted_at: str
     n_calibration_anchors: int
+    # Added in format 1.1 — optional on read; always present on write.
+    drift_thresholds: dict[str, float] = field(default_factory=dict)
+    calibrator_params: dict[str, Any] = field(default_factory=dict)
+    harness_class: str = "JudgeHarness"
+    score_range: tuple[float, float] = (0.0, 1.0)
+    drift_bins: int = 10
+    schema_extras: dict[str, Any] = field(default_factory=dict)
 
 
-class StateFormatError(RuntimeError):
+class StateFormatError(JudgekitError):
     """Raised when a saved state file has an incompatible major version."""
 
 
@@ -179,6 +196,27 @@ def _atomic_write_text(path: Path, content: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content)
     tmp.replace(path)
+
+
+def _extract_calibrator_params(calibrator: Calibrator) -> dict[str, Any]:
+    """Pull JSON-safe hyperparameters off a fitted calibrator.
+
+    These are *informational* — they let `state.json` describe the
+    calibrator without unpickling. The pickle is still the source of
+    truth on load.
+    """
+    name = type(calibrator).__name__
+    if name == "HistogramBinCalibrator":
+        return {"n_bins": int(getattr(calibrator, "n_bins", 10))}
+    if name == "TemperatureCalibrator":
+        return {"T": float(getattr(calibrator, "T", 1.0))}
+    if name == "BetaCalibrator":
+        return {
+            "a": float(getattr(calibrator, "a", 0.0)),
+            "b": float(getattr(calibrator, "b", 0.0)),
+            "c": float(getattr(calibrator, "c", 0.0)),
+        }
+    return {}
 
 
 def save_harness(harness: JudgeHarness, path: str | Path) -> None:
@@ -197,6 +235,7 @@ def save_harness(harness: JudgeHarness, path: str | Path) -> None:
     target = Path(path)
     target.mkdir(parents=True, exist_ok=True)
 
+    monitor = harness._drift_monitor
     metadata = {
         "format_version": STATE_FORMAT_VERSION,
         "judgekit_version": judgekit_version,
@@ -205,9 +244,21 @@ def save_harness(harness: JudgeHarness, path: str | Path) -> None:
         "psi_warn": harness.psi_warn,
         "psi_fail": harness.psi_fail,
         "strict": harness.strict,
-        "drift_method": harness._drift_monitor.method,
+        "drift_method": monitor.method,
         "fitted_at": datetime.now(timezone.utc).isoformat(),
         "n_calibration_anchors": len(harness.calibration_set),
+        # 1.1 additions
+        "drift_thresholds": {
+            "psi_warn": monitor.psi_warn,
+            "psi_fail": monitor.psi_fail,
+            "ks_p_threshold": monitor.ks_p_threshold,
+            "wasserstein_threshold": monitor.wasserstein_threshold,
+        },
+        "calibrator_params": _extract_calibrator_params(harness.calibrator),
+        "harness_class": type(harness).__name__,
+        "score_range": [0.0, 1.0],
+        "drift_bins": monitor.bins,
+        "schema_extras": {},
     }
     _atomic_write_text(target / "state.json", json.dumps(metadata, indent=2))
 
@@ -228,6 +279,8 @@ def load_metadata(path: str | Path) -> StateMetadata:
     raw_text = (source / "state.json").read_text()
     raw: dict[str, Any] = json.loads(raw_text)
     _check_format_version(raw.get("format_version", ""))
+    score_range_raw = raw.get("score_range", [0.0, 1.0])
+    score_range = (float(score_range_raw[0]), float(score_range_raw[1]))
     return StateMetadata(
         format_version=raw["format_version"],
         judgekit_version=raw["judgekit_version"],
@@ -239,6 +292,12 @@ def load_metadata(path: str | Path) -> StateMetadata:
         drift_method=raw["drift_method"],
         fitted_at=raw["fitted_at"],
         n_calibration_anchors=raw["n_calibration_anchors"],
+        drift_thresholds=raw.get("drift_thresholds", {}),
+        calibrator_params=raw.get("calibrator_params", {}),
+        harness_class=raw.get("harness_class", "JudgeHarness"),
+        score_range=score_range,
+        drift_bins=int(raw.get("drift_bins", 10)),
+        schema_extras=raw.get("schema_extras", {}),
     )
 
 
@@ -305,11 +364,15 @@ def load_harness(
         psi_fail=metadata.psi_fail,
         strict=metadata.strict,
     )
+    thresholds = metadata.drift_thresholds
     harness._drift_monitor = DriftMonitor(
         reference_scores=reference,
+        bins=metadata.drift_bins,
         psi_warn=metadata.psi_warn,
         psi_fail=metadata.psi_fail,
         method=drift_method,
+        ks_p_threshold=float(thresholds.get("ks_p_threshold", 0.01)),
+        wasserstein_threshold=float(thresholds.get("wasserstein_threshold", 0.10)),
     )
     harness._calibration_raw = reference
     harness._fitted = True

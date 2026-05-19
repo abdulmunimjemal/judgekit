@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from typing import NamedTuple
 
 import numpy as np
 from scipy.optimize import minimize_scalar
@@ -306,9 +307,21 @@ def select_calibrator(n_anchors: int) -> Calibrator:
     return IsotonicCalibrator()
 
 
+class ConfidenceInterval(NamedTuple):
+    """A two-sided confidence interval ``[lower, upper]``.
+
+    ``NamedTuple`` so existing destructuring (``lo, hi = ci``) keeps
+    working and so the value is still ``tuple``-equal in tests.
+    """
+
+    lower: float
+    upper: float
+
+
 def bootstrap_ci(
     scores: np.ndarray,
     statistic: Callable[[np.ndarray], float] = np.mean,
+    *,
     n_resamples: int = 1000,
     confidence: float = 0.95,
     rng: np.random.Generator | None = None,

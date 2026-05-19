@@ -29,7 +29,7 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from judgekit.calibration import bootstrap_ci
+from judgekit.calibration import ConfidenceInterval, bootstrap_ci
 
 
 class PairwiseOutcome(str, Enum):
@@ -77,7 +77,7 @@ class PairwiseResult:
     """
 
     win_rate_a: float
-    win_rate_a_ci: tuple[float, float]
+    win_rate_a_ci: ConfidenceInterval
     n_pairs: int
     n_a_wins: int
     n_b_wins: int
@@ -125,6 +125,7 @@ class PairwiseHarness:
     def __init__(
         self,
         judge: PairwiseJudge,
+        *,
         confidence: float = 0.95,
     ) -> None:
         if not 0.0 < confidence < 1.0:
@@ -182,7 +183,7 @@ class PairwiseHarness:
 
         return PairwiseResult(
             win_rate_a=point,
-            win_rate_a_ci=(lo, hi),
+            win_rate_a_ci=ConfidenceInterval(lower=lo, upper=hi),
             n_pairs=len(pairs),
             n_a_wins=a_wins,
             n_b_wins=b_wins,
