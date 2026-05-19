@@ -122,3 +122,25 @@ def test_report_baseline_only_when_no_result(tmp_path: Path) -> None:
     content = out.read_text()
     # No current-run point estimate yet -> em-dash placeholder.
     assert "—" in content
+
+
+def test_report_extra_missing_raises_friendly_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If `pip install judgekit[report]` wasn't run, .report() must point users
+    at the fix instead of leaking a bare ModuleNotFoundError."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name in ("jinja2", "plotly", "plotly.graph_objects", "plotly.io"):
+            raise ImportError(f"No module named '{name}'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    harness = _make_fitted_harness()
+    out = tmp_path / "report.html"
+    with pytest.raises(ImportError, match=r"\[report\] extra"):
+        harness.report(out)

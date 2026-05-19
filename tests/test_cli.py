@@ -149,7 +149,7 @@ def test_cli_report_custom_title(tmp_path: Path) -> None:
 # ---------- audit ----------
 
 
-def test_cli_audit_emits_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_audit_verbosity_emits_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     # Build a verbosity-biased trace: longer items get higher scores.
     items_scores = []
     for i in range(20):
@@ -157,7 +157,7 @@ def test_cli_audit_emits_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     traces = tmp_path / "judge.jsonl"
     _write_traces_jsonl(traces, items_scores)
 
-    code = main(["audit", "--judge-traces", str(traces)])
+    code = main(["audit-verbosity", "--judge-traces", str(traces)])
     out = capsys.readouterr().out
     parsed = json.loads(out)
     assert parsed["audit"] == "verbosity_bias"
@@ -166,7 +166,7 @@ def test_cli_audit_emits_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert code in (0, 2)
 
 
-def test_cli_audit_zero_exit_on_clean_judge(
+def test_cli_audit_verbosity_zero_exit_on_clean_judge(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rng = np.random.default_rng(0)
@@ -175,16 +175,31 @@ def test_cli_audit_zero_exit_on_clean_judge(
         items_scores.append((f"item-{i}", float(rng.uniform(0.3, 0.7))))
     traces = tmp_path / "judge.jsonl"
     _write_traces_jsonl(traces, items_scores)
-    code = main(["audit", "--judge-traces", str(traces)])
+    code = main(["audit-verbosity", "--judge-traces", str(traces)])
     assert code == 0
 
 
-def test_cli_audit_rejects_too_few_records(tmp_path: Path) -> None:
+def test_cli_audit_verbosity_rejects_too_few_records(tmp_path: Path) -> None:
     items_scores = [("x", 0.5), ("y", 0.6)]
     traces = tmp_path / "judge.jsonl"
     _write_traces_jsonl(traces, items_scores)
     with pytest.raises(SystemExit, match="3"):
-        main(["audit", "--judge-traces", str(traces)])
+        main(["audit-verbosity", "--judge-traces", str(traces)])
+
+
+def test_cli_audit_legacy_emits_deprecation_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The plain `audit` subcommand still works but warns it's deprecated."""
+    rng = np.random.default_rng(0)
+    items_scores = [(f"item-{i}", float(rng.uniform(0.3, 0.7))) for i in range(20)]
+    traces = tmp_path / "judge.jsonl"
+    _write_traces_jsonl(traces, items_scores)
+    code = main(["audit", "--judge-traces", str(traces)])
+    err = capsys.readouterr().err
+    assert "DEPRECATION" in err
+    assert "audit-verbosity" in err
+    assert code == 0
 
 
 # ---------- general ----------
