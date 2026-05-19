@@ -82,8 +82,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install build
-      - run: python -m build
+      - name: Install build tooling
+        run: pip install build twine
+      - name: Build sdist + wheel
+        run: python -m build
+      - name: twine check (catches PyPI render failures pre-tag)
+        run: twine check --strict dist/*
+      - name: Verify LICENSE shipped in artifacts
+        run: |
+          set -euo pipefail
+          unzip -p dist/*.whl "*/LICENSE" > /dev/null \
+            || (echo "::error::LICENSE missing from wheel" && exit 1)
+          tar -tzf dist/*.tar.gz | grep -q '/LICENSE$' \
+            || (echo "::error::LICENSE missing from sdist" && exit 1)
+      - name: Verify py.typed shipped in wheel
+        run: |
+          set -euo pipefail
+          unzip -p dist/*.whl "judgekit/py.typed" > /dev/null \
+            || (echo "::error::py.typed missing from wheel" && exit 1)
       - uses: actions/upload-artifact@v4
         with:
           name: dist

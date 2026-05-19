@@ -4,12 +4,30 @@ All notable changes to `judgekit` are documented here. Format adapted from [Keep
 
 ## [Unreleased]
 
+## [1.0.0rc1] — 2026-05-19
+
+First public release candidate. Public-API contract: every symbol re-exported from `judgekit.__init__.__all__`, every CLI subcommand and flag listed in `judgekit --help`, and every field in `state.json` will retain its name, signature, and semantics through all v1.x releases. Additions are allowed; removals or renames require v2.0.
+
 ### Added
 
-- GitHub Actions CI pipeline: `ruff check`, `ruff format --check`, `mypy --strict`, `pytest` matrix across Python 3.10/3.11/3.12/3.13 × Ubuntu/macOS; coverage gate at 85% (will tighten to 90% before v1.0).
-- GitHub Actions release workflow: Trusted Publishing to PyPI on tag, auto-generated GitHub release notes.
-- `CONTRIBUTING.md` — quality bar, statistical-primitive submission requirements, design constraints.
-- Issue + pull request templates under `.github/`.
+- 5 calibrators: `PlattCalibrator`, `IsotonicCalibrator`, `TemperatureCalibrator` (Guo et al. 2017), `BetaCalibrator` (Kull et al. 2017), `HistogramBinCalibrator` (Naeini et al. 2015). `select_calibrator(n_anchors)` picks a default for the calibration-set size.
+- 4 drift measures: `kl_divergence`, `psi`, `ks_test` (wraps `scipy.stats.ks_2samp`), `wasserstein` (wraps `scipy.stats.wasserstein_distance`). `DriftMonitor` supports `method="psi"|"ks"|"wasserstein"|"all"`.
+- 3 inter-rater agreement metrics: `cohens_kappa`, `fleiss_kappa`, `krippendorff_alpha` (nominal / ordinal / interval / ratio). Each validated against the reference library (sklearn / statsmodels / `krippendorff`) to 1e-9 tolerance.
+- 3 bias audits: `position_bias`, `verbosity_bias`, `format_sensitivity` with `BiasReport` dataclass and `.is_concerning()` thresholds from published norms.
+- Pairwise eval primitives: `PairwiseJudge` Protocol, `PairwiseVerdict`, `PairwiseOutcome`, `PairwiseHarness` with bootstrap win-rate CIs and position-bias-corrected aggregation.
+- Persistence: `JudgeHarness.save(path)` and `JudgeHarness.load(path, judge)` with a versioned state format. Predictions round-trip exactly (verified to 1e-12 across all five calibrators).
+- HTML eval report: `JudgeHarness.report(path)` renders a self-contained HTML file with plotly inlined (no CDN). Contains reliability diagram, score distribution overlay, and a PSI drift gauge.
+- Command-line interface: `judgekit calibrate`, `judgekit report`, `judgekit audit`, `judgekit version`.
+- PEP 561 `py.typed` marker — downstream `mypy` / `pyright` users now read our type annotations.
+- Apache-2.0 LICENSE file shipped in both sdist and wheel.
+- `judgekit[all]` extra that installs every optional integration in one go.
+
+### Changed
+
+- Runtime dependencies pinned with major-version ceilings: `numpy>=1.26,<3`, `scipy>=1.11,<2`, `scikit-learn>=1.4,<2`. Prevents silent breakage on future major bumps.
+- Optional `[report]` extra also pinned: `plotly>=5.20,<7`, `jinja2>=3.1,<4`.
+- `Development Status` classifier promoted from `3 - Alpha` to `4 - Beta` pending v1.0.0 final.
+- Version is now single-sourced from `src/judgekit/__init__.py.__version__` via `hatchling`'s dynamic-version hook.
 
 ## [0.1.0] — 2026-05-17
 
@@ -24,5 +42,6 @@ Initial scaffold (private). Not published.
 - 25 unit tests, ruff-clean, validated against sklearn/numpy/scipy.
 - Apache-2.0 license; Python 3.10+ supported.
 
-[Unreleased]: https://github.com/abdulmunimj/judgekit/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/abdulmunimj/judgekit/releases/tag/v0.1.0
+[Unreleased]: https://github.com/abdulmunimjemal/judgekit/compare/v1.0.0rc1...HEAD
+[1.0.0rc1]: https://github.com/abdulmunimjemal/judgekit/releases/tag/v1.0.0rc1
+[0.1.0]: https://github.com/abdulmunimjemal/judgekit/releases/tag/v0.1.0
